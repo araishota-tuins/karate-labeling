@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>組手ラベリングシステム</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+
+  :root {
+    --bg: #0c0c0e;
+    --surface: #14141a;
+    --surface2: #1c1c26;
+    --border: #2a2a3a;
+    --border-bright: #3a3a50;
+    --text: #e8e8f0;
+    --text-dim: #6a6a80;
+    --text-muted: #3a3a50;
+    --accent: #ff3a3a;
+    --accent-dim: rgba(255,58,58,0.15);
+    --yes: #2aff8a;
+    --yes-dim: rgba(42,255,138,0.12);
+    --no: #ff6b2a;
+    --no-dim: rgba(255,107,42,0.12);
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Noto Sans JP', sans-serif;
+    --tap: 52px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .logo span { color: var(--text-dim); font-weight: 300; }
+
+  .mode-tabs {
+    display: flex;
+    gap: 3px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mode-tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 8px 11px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    -webkit-appearance: none;
+    border-radius: 0;
+    transition: all 0.15s;
+  }
+
+  .mode-tab:active { background: var(--surface2); }
+  .mode-tab.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .mode-tab.disabled { opacity: 0.3; pointer-events: none; }
+
+  .label-count { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .label-count em { color: var(--accent); font-style: normal; }
+
+  main { flex: 1; display: flex; flex-direction: column; }
+  .panel { display: none; flex: 1; flex-direction: column; }
+  .panel.active { display: flex; }
+
+  /* LOAD */
+  #panel-load { align-items: center; justify-content: center; gap: 24px; padding: 32px 16px; }
+
+  .load-box {
+    width: 100%;
+    max-width: 480px;
+    border: 2px dashed var(--border-bright);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .load-box:active, .load-box.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+
+  .load-icon { font-size: 48px; margin-bottom: 16px; display: block; }
+  .load-title { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
+  .load-sub { font-size: 13px; color: var(--text-dim); line-height: 1.8; }
+
+  #file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  .fps-row { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+
+  .fps-row select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: var(--tap);
+    -webkit-appearance: none;
+    border-radius: 0;
+  }
+
+  .recent-files { width: 100%; max-width: 480px; }
+  .recent-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+  .recent-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border); background: var(--surface); margin-bottom: 4px; font-family: var(--mono); font-size: 12px; }
+
+  /* VIDEO */
+  .video-area { background: #000; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
+
+  video { max-height: 40vh; max-width: 100%; display: block; width: 100%; object-fit: contain; }
+
+  .video-overlay {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(0,0,0,0.75);
+    padding: 5px 10px;
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+    display: flex; gap: 12px; pointer-events: none;
+  }
+
+  .video-overlay span { color: var(--text); }
+
+  .flash-mark { position: absolute; inset: 0; background: rgba(255,58,58,0.3); pointer-events: none; opacity: 0; transition: opacity 0.05s; }
+  .flash-mark.show { opacity: 1; }
+
+  /* TIMELINE */
+  .timeline-wrap { padding: 10px 12px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+  .timeline {
+    width: 100%; height: 32px;
+    background: var(--surface2); border: 1px solid var(--border);
+    position: relative; cursor: pointer; touch-action: none;
+  }
+
+  .timeline-progress { height: 100%; background: rgba(255,255,255,0.06); pointer-events: none; position: absolute; left: 0; top: 0; }
+  .timeline-cursor { position: absolute; top: 0; width: 2px; height: 100%; background: var(--text); pointer-events: none; }
+  .timeline-mark { position: absolute; top: 0; width: 3px; height: 100%; background: var(--accent); opacity: 0.9; }
+
+  /* CONTROLS */
+  .controls-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; flex-shrink: 0;
+  }
+
+  .ctrl-btn {
+    font-family: var(--mono); font-size: 12px; font-weight: 500;
+    padding: 0 14px; height: var(--tap);
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    white-space: nowrap; -webkit-appearance: none; border-radius: 0;
+    transition: background 0.1s;
+  }
+
+  .ctrl-btn:active { background: #222230; }
+
+  .ctrl-btn.primary { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .ctrl-btn.primary:active { background: rgba(255,58,58,0.28); }
+
+  .ctrl-btn kbd { background: var(--bg); border: 1px solid var(--border-bright); padding: 1px 5px; font-size: 10px; color: var(--text-dim); }
+  @media (hover: none) { .ctrl-btn kbd { display: none; } }
+
+  .ctrl-separator { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
+  .ctrl-spacer { flex: 1; }
+  .time-display { font-family: var(--mono); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+  .time-display em { color: var(--text); font-style: normal; }
+
+  /* FIRST PASS */
+  .first-pass-hint { padding: 8px 12px; background: var(--accent-dim); border-bottom: 1px solid rgba(255,58,58,0.2); font-size: 11px; color: var(--accent); font-family: var(--mono); }
+  @media (hover: none) { .first-pass-hint { display: none; } }
+
+  .mark-list-area { flex: 1; overflow-y: auto; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
+  .mark-list-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .mark-list-title em { color: var(--accent); font-style: normal; }
+  .mark-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .mark-item { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; min-height: 50px; }
+  .mark-item.current { border-color: var(--accent); background: var(--accent-dim); }
+  .mark-num { color: var(--text-muted); width: 20px; text-align: right; font-size: 11px; }
+  .mark-time { color: var(--text); min-width: 58px; }
+  .mark-frame { color: var(--text-dim); font-size: 11px; }
+
+  .mark-label-badge { margin-left: auto; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+  .mark-label-badge.yes { background: var(--yes-dim); color: var(--yes); border: 1px solid rgba(42,255,138,0.3); }
+  .mark-label-badge.no { background: var(--no-dim); color: var(--no); border: 1px solid rgba(255,107,42,0.3); }
+  .mark-label-badge.pending { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .mark-delete { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px 8px; min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center; }
+  .mark-delete:active { color: var(--accent); }
+
+  .mark-jump { background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; font-family: var(--mono); font-size: 12px; padding: 8px 12px; min-height: 40px; white-space: nowrap; }
+
+  /* SECOND PASS */
+  .second-pass-progress { padding: 10px 12px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .progress-bar-wrap { flex: 1; height: 4px; background: var(--border); }
+  .progress-bar-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+  .progress-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .progress-label em { color: var(--text); font-style: normal; }
+
+  .second-pass-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  .judge-area { padding: 16px 12px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+  .judge-question { font-size: 14px; font-weight: 500; margin-bottom: 14px; line-height: 1.6; }
+  .judge-question span { font-family: var(--mono); color: var(--accent); font-size: 12px; }
+
+  .judge-buttons { display: flex; gap: 10px; }
+
+  .judge-btn {
+    flex: 1; padding: 18px 10px;
+    border: 2px solid; background: transparent;
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+    -webkit-appearance: none; border-radius: 0;
+    min-height: 68px; transition: background 0.15s;
+  }
+
+  .judge-btn kbd { display: none; }
+  @media (hover: hover) {
+    .judge-btn kbd { display: inline; background: rgba(0,0,0,0.3); border: 1px solid currentColor; padding: 2px 6px; font-size: 11px; opacity: 0.7; }
+  }
+
+  .judge-btn.yes-btn { border-color: var(--yes); color: var(--yes); }
+  .judge-btn.yes-btn:active, .judge-btn.yes-btn.selected { background: var(--yes-dim); }
+  .judge-btn.no-btn { border-color: var(--no); color: var(--no); }
+  .judge-btn.no-btn:active, .judge-btn.no-btn.selected { background: var(--no-dim); }
+
+  .memo-area { padding: 12px; flex-shrink: 0; }
+  .memo-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+
+  .memo-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 12px; font-family: var(--sans); font-size: 14px; resize: vertical; min-height: 80px; -webkit-appearance: none; border-radius: 0; }
+  .memo-input:focus { outline: none; border-color: var(--border-bright); }
+
+  .nav-buttons { display: flex; gap: 8px; padding: 10px 12px; background: var(--surface); border-top: 1px solid var(--border); flex-shrink: 0; }
+
+  .nav-btn {
+    padding: 0 20px; height: var(--tap);
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    letter-spacing: 0.05em; text-transform: uppercase;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    -webkit-appearance: none; border-radius: 0; transition: background 0.1s;
+  }
+
+  .nav-btn:active { background: #222230; }
+  .nav-btn.next { margin-left: auto; border-color: var(--accent); background: var(--accent-dim); color: var(--accent); flex: 1; justify-content: center; }
+  .nav-btn.next:active { background: rgba(255,58,58,0.28); }
+
+  /* REVIEW */
+  #panel-review { flex-direction: column; padding: 0; }
+
+  .review-header { padding: 12px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
+  .review-title { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
+  .review-stats { display: flex; gap: 10px; margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-dim); flex-wrap: wrap; }
+  .review-stats span { color: var(--text); }
+
+  .review-table-wrap { flex: 1; overflow-y: auto; padding: 10px 12px; -webkit-overflow-scrolling: touch; }
+
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  thead tr { border-bottom: 2px solid var(--border); }
+  th { text-align: left; padding: 8px 8px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); font-weight: 500; }
+  td { padding: 11px 8px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tr:active td { background: var(--surface); }
+  td.time-col { color: var(--accent); }
+  td.frame-col { color: var(--text-dim); font-size: 11px; }
+  td.memo-col { color: var(--text-dim); font-size: 11px; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .badge { display: inline-block; padding: 3px 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+  .badge.yes { background: var(--yes-dim); color: var(--yes); border: 1px solid rgba(42,255,138,0.3); }
+  .badge.no { background: var(--no-dim); color: var(--no); border: 1px solid rgba(255,107,42,0.3); }
+  .badge.pending { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .action-btns { display: flex; gap: 4px; }
+  .icon-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 8px 10px; cursor: pointer; font-size: 11px; font-family: var(--mono); min-height: 40px; }
+  .icon-btn:active { border-color: var(--border-bright); color: var(--text); }
+  .icon-btn.del:active { border-color: var(--accent); color: var(--accent); }
+
+  /* EXPORT */
+  #panel-export { align-items: center; justify-content: center; gap: 20px; padding: 32px 16px; }
+  .export-title { font-family: var(--mono); font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text); }
+  .export-sub { font-size: 13px; color: var(--text-dim); max-width: 480px; text-align: center; line-height: 1.6; }
+  .export-options { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 480px; }
+
+  .export-card { border: 1px solid var(--border); background: var(--surface); padding: 16px; display: flex; align-items: center; gap: 14px; }
+  .export-card-icon { font-size: 26px; flex-shrink: 0; }
+  .export-card-body { flex: 1; }
+  .export-card-title { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; }
+  .export-card-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+  .export-btn {
+    padding: 0 16px; height: var(--tap);
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    cursor: pointer; flex-shrink: 0;
+    -webkit-appearance: none; border-radius: 0;
+    display: flex; align-items: center; transition: background 0.1s;
+  }
+
+  .export-btn.primary { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .export-btn.primary:active { background: rgba(255,58,58,0.28); }
+  .export-btn.loading { opacity: 0.6; pointer-events: none; }
+
+  .sheets-status { margin-top: 8px; font-family: var(--mono); font-size: 11px; padding: 8px 10px; display: none; }
+  .sheets-status.ok { background: var(--yes-dim); color: var(--yes); border: 1px solid rgba(42,255,138,0.3); display: block; }
+  .sheets-status.err { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(255,58,58,0.3); display: block; }
+
+  /* EMPTY */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-dim); font-family: var(--mono); font-size: 12px; line-height: 2; }
+
+  /* TOAST */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2); border: 1px solid var(--border-bright);
+    padding: 12px 20px; font-family: var(--mono); font-size: 12px; color: var(--text);
+    transition: transform 0.25s; z-index: 999; pointer-events: none;
+    max-width: 90vw; text-align: center;
+  }
+
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">組手<span>/</span>LABEL</div>
+  <div class="mode-tabs">
+    <button class="mode-tab active"   data-panel="load"   onclick="switchPanel('load')">①読込</button>
+    <button class="mode-tab disabled" data-panel="first"  onclick="switchPanel('first')">②マーク</button>
+    <button class="mode-tab disabled" data-panel="second" onclick="switchPanel('second')">③判定</button>
+    <button class="mode-tab disabled" data-panel="review" onclick="switchPanel('review')">④確認</button>
+    <button class="mode-tab disabled" data-panel="export" onclick="switchPanel('export')">⑤保存</button>
+  </div>
+  <div class="label-count" id="label-count">マーク: <em>0</em></div>
+</header>
+
+<main>
+
+  <!-- ① LOAD -->
+  <div class="panel active" id="panel-load">
+    <div class="load-box" id="load-box">
+      <input type="file" id="file-input" accept="video/*">
+      <span class="load-icon">🥋</span>
+      <div class="load-title">動画ファイルを選択</div>
+      <div class="load-sub">タップしてフォトライブラリまたは<br>ファイルアプリから選択<br><br>MOV・MP4 対応</div>
+    </div>
+    <div class="fps-row">
+      <span>フレームレート</span>
+      <select id="fps-select">
+        <option value="30">30 fps（標準）</option>
+        <option value="60">60 fps</option>
+        <option value="25">25 fps</option>
+        <option value="24">24 fps</option>
+      </select>
+    </div>
+    <div class="recent-files" id="recent-files" style="display:none">
+      <div class="recent-title">前回の作業データ</div>
+      <div id="recent-list"></div>
+    </div>
+  </div>
+
+  <!-- ② FIRST PASS -->
+  <div class="panel" id="panel-first">
+    <div class="video-area">
+      <video id="video" preload="auto" playsinline webkit-playsinline></video>
+      <div class="video-overlay">
+        <span id="v-filename">—</span>
+        <span id="v-time">0:00.000</span>
+        <span>F<span id="v-frame">0</span></span>
+      </div>
+      <div class="flash-mark" id="flash-mark"></div>
+    </div>
+    <div class="timeline-wrap">
+      <div class="timeline" id="timeline">
+        <div class="timeline-progress" id="timeline-progress"></div>
+        <div class="timeline-cursor" id="timeline-cursor"></div>
+      </div>
+    </div>
+    <div class="first-pass-hint">Space：再生/停止　← →：コマ送り　M：マーク追加</div>
+    <div class="controls-bar">
+      <button class="ctrl-btn" onclick="videoSkip(-1)">◀ <kbd>←</kbd></button>
+      <button class="ctrl-btn" onclick="togglePlay()">▶/⏸ <kbd>Space</kbd></button>
+      <button class="ctrl-btn" onclick="videoSkip(1)">▶▶ <kbd>→</kbd></button>
+      <div class="ctrl-separator"></div>
+      <button class="ctrl-btn primary" onclick="markHesitation()">🔴 マーク <kbd>M</kbd></button>
+      <div class="ctrl-spacer"></div>
+      <div class="time-display" id="time-display-first">—</div>
+    </div>
+    <div class="controls-bar" style="border-top:none;padding-top:0">
+      <button class="ctrl-btn" style="flex:1;justify-content:center" onclick="switchPanel('second')">③ 判定画面へ →</button>
+    </div>
+    <div class="mark-list-area">
+      <div class="mark-list-title">マーク一覧 <em id="mark-count-badge">0</em> 件</div>
+      <div class="mark-list" id="mark-list"></div>
+    </div>
+  </div>
+
+  <!-- ③ SECOND PASS -->
+  <div class="panel" id="panel-second">
+    <div class="video-area">
+      <video id="video2" preload="auto" playsinline webkit-playsinline></video>
+      <div class="video-overlay">
+        <span id="v2-filename">—</span>
+        <span id="v2-time">0:00.000</span>
+        <span>F<span id="v2-frame">0</span></span>
+      </div>
+    </div>
+    <div class="timeline-wrap">
+      <div class="timeline" id="timeline2">
+        <div class="timeline-progress" id="timeline-progress2"></div>
+        <div class="timeline-cursor" id="timeline-cursor2"></div>
+      </div>
+    </div>
+    <div class="second-pass-progress">
+      <div class="progress-label">判定: <em id="sp-current">0</em>/<em id="sp-total">0</em></div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" id="sp-bar"></div></div>
+    </div>
+    <div class="second-pass-content">
+      <div class="controls-bar">
+        <button class="ctrl-btn" onclick="video2Skip(-1)">◀ <kbd>←</kbd></button>
+        <button class="ctrl-btn" onclick="togglePlay2()">▶/⏸ <kbd>Space</kbd></button>
+        <button class="ctrl-btn" onclick="video2Skip(1)">▶▶ <kbd>→</kbd></button>
+        <div class="ctrl-spacer"></div>
+        <div class="time-display" id="time-display-second">—</div>
+      </div>
+      <div class="judge-area">
+        <div class="judge-question">
+          <span id="sp-timestamp">—</span> の瞬間、攻撃すべきだったか？
+        </div>
+        <div class="judge-buttons">
+          <button class="judge-btn yes-btn" id="btn-yes" onclick="setJudge('yes')">✅ 攻撃すべき <kbd>Y</kbd></button>
+          <button class="judge-btn no-btn"  id="btn-no"  onclick="setJudge('no')">❌ 攻撃不要 <kbd>N</kbd></button>
+        </div>
+      </div>
+      <div class="memo-area">
+        <div class="memo-label">メモ（任意）</div>
+        <textarea class="memo-input" id="memo-input" placeholder="例：相手が前に出た、距離が近かった、など"></textarea>
+      </div>
+    </div>
+    <div class="nav-buttons">
+      <button class="nav-btn" onclick="spPrev()">← 前へ</button>
+      <button class="nav-btn next" onclick="spNext()">次へ →</button>
+    </div>
+  </div>
+
+  <!-- ④ REVIEW -->
+  <div class="panel" id="panel-review">
+    <div class="review-header">
+      <div class="review-title">確認・修正</div>
+      <div class="review-stats">
+        合計: <span id="rv-total">0</span>件&nbsp;
+        判定済: <span id="rv-done">0</span>件&nbsp;
+        未判定: <span id="rv-pending">0</span>件
+      </div>
+    </div>
+    <div class="review-table-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>時刻</th><th>Frame</th><th>判定</th><th>メモ</th><th>操作</th></tr>
+        </thead>
+        <tbody id="review-tbody"></tbody>
+      </table>
+      <div class="empty-state" id="review-empty" style="display:none">
+        マークがありません。<br>②マーク画面でマークしてください。
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤ EXPORT -->
+  <div class="panel" id="panel-export">
+    <div class="export-title">データを保存</div>
+    <div class="export-sub">ラベリングデータをエクスポートします。</div>
+    <div class="export-options">
+
+      <div class="export-card">
+        <div class="export-card-icon">📄</div>
+        <div class="export-card-body">
+          <div class="export-card-title">CSVダウンロード</div>
+          <div class="export-card-desc">ローカルにCSVファイルを保存します。機械学習にそのまま使えます。</div>
+        </div>
+        <button class="export-btn primary" onclick="downloadCSV()">DL</button>
+      </div>
+
+      <div class="export-card">
+        <div class="export-card-icon">📊</div>
+        <div class="export-card-body">
+          <div class="export-card-title">Google Sheetsに保存</div>
+          <div class="export-card-desc">動画ごとに自動でシートを作成して保存します。</div>
+          <div class="sheets-status" id="sheets-status"></div>
+        </div>
+        <button class="export-btn primary" id="sheets-btn" onclick="exportToSheets()">保存</button>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxWEoC-jKazUmvkxdogGJ-iL4QTa-Rig3xOrvXncMGXjbNOPz66kkHwfS3TKcNCaqFeMw/exec';
+
+// ── STATE ───────────────────────────────────
+let state = { videoName: '', fps: 30, duration: 0, marks: [], spIndex: 0 };
+
+const video  = document.getElementById('video');
+const video2 = document.getElementById('video2');
+
+// ── PANEL ───────────────────────────────────
+function switchPanel(name) {
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  if (name === 'second') initSecondPass();
+  if (name === 'review') renderReview();
+}
+
+function enableTab(name) {
+  const t = document.querySelector(`.mode-tab[data-panel="${name}"]`);
+  if (t) t.classList.remove('disabled');
+}
+
+// ── LOAD ────────────────────────────────────
+document.getElementById('fps-select').addEventListener('change', e => { state.fps = parseInt(e.target.value); });
+
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) loadVideo(e.target.files[0]);
+});
+
+const loadBox = document.getElementById('load-box');
+loadBox.addEventListener('dragover', e => { e.preventDefault(); loadBox.classList.add('drag-over'); });
+loadBox.addEventListener('dragleave', () => loadBox.classList.remove('drag-over'));
+loadBox.addEventListener('drop', e => {
+  e.preventDefault(); loadBox.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadVideo(e.dataTransfer.files[0]);
+});
+
+function loadVideo(file) {
+  state.videoName = file.name;
+  state.fps = parseInt(document.getElementById('fps-select').value);
+  const url = URL.createObjectURL(file);
+  video.src = video2.src = url;
+  video.load(); video2.load();
+
+  video.addEventListener('loadedmetadata', () => {
+    state.duration = video.duration;
+    document.getElementById('v-filename').textContent = file.name;
+    document.getElementById('v2-filename').textContent = file.name;
+  }, { once: true });
+
+  const saved = localStorage.getItem('karate_marks_' + file.name);
+  state.marks = saved ? JSON.parse(saved) : [];
+  if (saved) toast('前回のデータを復元しました（' + state.marks.length + '件）');
+
+  ['first','second','review','export'].forEach(enableTab);
+  switchPanel('first');
+  updateLabelCount(); renderMarkList(); rebuildTimelineMarks(); showRecentFiles();
+}
+
+// ── VIDEO 1 ─────────────────────────────────
+function togglePlay() { video.paused ? video.play() : video.pause(); }
+
+function videoSkip(dir) {
+  video.pause();
+  video.currentTime = Math.max(0, Math.min(state.duration, video.currentTime + dir / state.fps));
+}
+
+video.addEventListener('timeupdate', () => {
+  updateHUD(video, 'time-display-first', 'v-time', 'v-frame', 'timeline-progress', 'timeline-cursor');
+  renderMarkList();
+});
+
+function updateHUD(v, dispId, timeId, frameId, progId, curId) {
+  const t = v.currentTime, dur = v.duration || 1;
+  const frame = Math.floor(t * state.fps);
+  const mm = Math.floor(t / 60), ss = (t % 60).toFixed(3).padStart(6, '0');
+  const str = mm + ':' + ss;
+  if (dispId) document.getElementById(dispId).innerHTML = '<em>' + str + '</em> F' + frame;
+  if (timeId)  document.getElementById(timeId).textContent = str;
+  if (frameId) document.getElementById(frameId).textContent = frame;
+  const pct = (t / dur) * 100;
+  document.getElementById(progId).style.width = pct + '%';
+  document.getElementById(curId).style.left = pct + '%';
+}
+
+function seekTimeline(el, vidEl, clientX) {
+  const rect = el.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  vidEl.currentTime = pct * (vidEl.duration || 0);
+}
+
+const tl1 = document.getElementById('timeline');
+tl1.addEventListener('click', e => seekTimeline(tl1, video, e.clientX));
+tl1.addEventListener('touchstart', e => { e.preventDefault(); seekTimeline(tl1, video, e.touches[0].clientX); }, { passive: false });
+
+// ── MARK ────────────────────────────────────
+function markHesitation() {
+  const t = video.currentTime;
+  const frame = Math.floor(t * state.fps);
+  const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  state.marks.push({ id, timestampSec: parseFloat(t.toFixed(3)), frameNumber: frame, shouldAttack: null, memo: '' });
+  state.marks.sort((a, b) => a.timestampSec - b.timestampSec);
+  saveToStorage(); updateLabelCount(); renderMarkList(); addTimelineMark(t);
+  const flash = document.getElementById('flash-mark');
+  flash.classList.add('show');
+  setTimeout(() => flash.classList.remove('show'), 120);
+  toast('🔴 マーク: ' + formatTime(t) + ' F' + frame);
+}
+
+function addTimelineMark(t) {
+  const dur = video.duration || 1;
+  const dot = document.createElement('div');
+  dot.className = 'timeline-mark';
+  dot.style.left = ((t / dur) * 100) + '%';
+  document.getElementById('timeline').appendChild(dot);
+}
+
+function rebuildTimelineMarks() {
+  const tl = document.getElementById('timeline');
+  tl.querySelectorAll('.timeline-mark').forEach(m => m.remove());
+  const dur = video.duration || 1;
+  state.marks.forEach(m => {
+    const dot = document.createElement('div');
+    dot.className = 'timeline-mark';
+    dot.style.left = ((m.timestampSec / dur) * 100) + '%';
+    tl.appendChild(dot);
+  });
+}
+
+function renderMarkList() {
+  const list = document.getElementById('mark-list');
+  document.getElementById('mark-count-badge').textContent = state.marks.length;
+  if (!state.marks.length) {
+    list.innerHTML = '<div class="empty-state">マークがありません。<br>マークボタンで迷いの瞬間を記録してください。</div>';
+    return;
+  }
+  const curT = video.currentTime;
+  list.innerHTML = state.marks.map((m, i) => {
+    const isCur = Math.abs(m.timestampSec - curT) < (1 / state.fps) * 2;
+    const badge = m.shouldAttack === 'yes'
+      ? '<span class="mark-label-badge yes">攻撃すべき</span>'
+      : m.shouldAttack === 'no'
+        ? '<span class="mark-label-badge no">攻撃不要</span>'
+        : '<span class="mark-label-badge pending">未判定</span>';
+    return `<div class="mark-item ${isCur ? 'current' : ''}">
+      <span class="mark-num">${i+1}</span>
+      <span class="mark-time">${formatTime(m.timestampSec)}</span>
+      <span class="mark-frame">F${m.frameNumber}</span>
+      ${badge}
+      <button class="mark-jump" onclick="jumpToMark(${i})">▶</button>
+      <button class="mark-delete" onclick="deleteMark('${m.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function jumpToMark(i) { video.currentTime = state.marks[i].timestampSec; video.pause(); }
+
+function deleteMark(id) {
+  state.marks = state.marks.filter(m => m.id !== id);
+  saveToStorage(); updateLabelCount(); renderMarkList(); rebuildTimelineMarks();
+}
+
+// ── VIDEO 2 ─────────────────────────────────
+function togglePlay2() { video2.paused ? video2.play() : video2.pause(); }
+
+function video2Skip(dir) {
+  video2.pause();
+  video2.currentTime = Math.max(0, Math.min(state.duration, video2.currentTime + dir / state.fps));
+}
+
+video2.addEventListener('timeupdate', () => {
+  updateHUD(video2, 'time-display-second', 'v2-time', 'v2-frame', 'timeline-progress2', 'timeline-cursor2');
+});
+
+const tl2 = document.getElementById('timeline2');
+tl2.addEventListener('click', e => seekTimeline(tl2, video2, e.clientX));
+tl2.addEventListener('touchstart', e => { e.preventDefault(); seekTimeline(tl2, video2, e.touches[0].clientX); }, { passive: false });
+
+// ── SECOND PASS ─────────────────────────────
+function initSecondPass() {
+  const fp = state.marks.findIndex(m => m.shouldAttack === null);
+  state.spIndex = fp !== -1 ? fp : 0;
+  renderSecondPass();
+}
+
+function renderSecondPass() {
+  const total = state.marks.length;
+  document.getElementById('sp-total').textContent = total;
+  if (!total) { document.getElementById('sp-current').textContent = 0; document.getElementById('sp-bar').style.width = '0%'; document.getElementById('sp-timestamp').textContent = '—'; return; }
+  const i = Math.max(0, Math.min(state.spIndex, total - 1));
+  state.spIndex = i;
+  const m = state.marks[i];
+  const done = state.marks.filter(x => x.shouldAttack !== null).length;
+  document.getElementById('sp-current').textContent = i + 1;
+  document.getElementById('sp-bar').style.width = (done / total * 100) + '%';
+  document.getElementById('sp-timestamp').textContent = formatTime(m.timestampSec) + ' (F' + m.frameNumber + ')';
+  document.getElementById('btn-yes').classList.toggle('selected', m.shouldAttack === 'yes');
+  document.getElementById('btn-no').classList.toggle('selected', m.shouldAttack === 'no');
+  document.getElementById('memo-input').value = m.memo || '';
+  video2.currentTime = Math.max(0, m.timestampSec - 1.5);
+  video2.pause();
+}
+
+function setJudge(val) {
+  if (!state.marks.length) return;
+  state.marks[state.spIndex].shouldAttack = val;
+  document.getElementById('btn-yes').classList.toggle('selected', val === 'yes');
+  document.getElementById('btn-no').classList.toggle('selected', val === 'no');
+  saveToStorage(); updateLabelCount();
+  toast(val === 'yes' ? '✅ 攻撃すべきと判定' : '❌ 攻撃不要と判定');
+}
+
+function saveMemo() {
+  if (!state.marks.length) return;
+  state.marks[state.spIndex].memo = document.getElementById('memo-input').value;
+  saveToStorage();
+}
+
+document.getElementById('memo-input').addEventListener('input', saveMemo);
+
+function spNext() {
+  saveMemo();
+  if (state.spIndex < state.marks.length - 1) { state.spIndex++; renderSecondPass(); }
+  else { toast('全マーク確認完了！④確認へ進めます。'); switchPanel('review'); }
+}
+
+function spPrev() {
+  saveMemo();
+  if (state.spIndex > 0) { state.spIndex--; renderSecondPass(); }
+}
+
+// ── REVIEW ───────────────────────────────────
+function renderReview() {
+  const total = state.marks.length;
+  const done = state.marks.filter(m => m.shouldAttack !== null).length;
+  document.getElementById('rv-total').textContent = total;
+  document.getElementById('rv-done').textContent = done;
+  document.getElementById('rv-pending').textContent = total - done;
+  const tbody = document.getElementById('review-tbody');
+  const empty = document.getElementById('review-empty');
+  if (!total) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = state.marks.map((m, i) => {
+    const badge = m.shouldAttack === 'yes'
+      ? '<span class="badge yes">攻撃すべき</span>'
+      : m.shouldAttack === 'no'
+        ? '<span class="badge no">攻撃不要</span>'
+        : '<span class="badge pending">未判定</span>';
+    const memo = m.memo ? `<td class="memo-col" title="${escHtml(m.memo)}">${escHtml(m.memo)}</td>` : '<td class="memo-col" style="color:var(--text-muted)">—</td>';
+    return `<tr>
+      <td>${i+1}</td>
+      <td class="time-col">${formatTime(m.timestampSec)}</td>
+      <td class="frame-col">F${m.frameNumber}</td>
+      <td>${badge}</td>${memo}
+      <td><div class="action-btns">
+        <button class="icon-btn" onclick="rvGoSecond(${i})">編集</button>
+        <button class="icon-btn del" onclick="deleteMark('${m.id}');renderReview()">✕</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function rvGoSecond(i) { state.spIndex = i; switchPanel('second'); renderSecondPass(); }
+
+// ── EXPORT ───────────────────────────────────
+function downloadCSV() {
+  if (!state.marks.length) { toast('マークがありません'); return; }
+  const rows = [['video_name','timestamp_sec','frame_number','label','should_attack','memo']];
+  state.marks.forEach(m => {
+    rows.push([state.videoName, m.timestampSec, m.frameNumber, 'hesitation', m.shouldAttack||'', '"'+(m.memo||'').replace(/"/g,'""')+'"']);
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = state.videoName.replace(/\.[^/.]+$/,'') + '_labels.csv';
+  a.click();
+  toast('CSVをダウンロードしました');
+}
+
+async function exportToSheets() {
+  if (!state.marks.length) { toast('マークがありません'); return; }
+  const btn = document.getElementById('sheets-btn');
+  const statusEl = document.getElementById('sheets-status');
+  btn.classList.add('loading'); btn.textContent = '送信中…';
+  statusEl.className = 'sheets-status';
+
+  const payload = {
+    videoName: state.videoName,
+    rows: state.marks.map(m => ({
+      videoName: state.videoName,
+      timestampSec: m.timestampSec,
+      frameNumber: m.frameNumber,
+      label: 'hesitation',
+      shouldAttack: m.shouldAttack || '',
+      memo: m.memo || ''
+    }))
+  };
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      statusEl.className = 'sheets-status ok';
+      statusEl.textContent = '✅ ' + data.written + '件をSheetsに保存しました';
+      toast('Google Sheetsに保存しました！');
+    } else { throw new Error(data.message || '不明なエラー'); }
+  } catch (err) {
+    statusEl.className = 'sheets-status err';
+    statusEl.textContent = '❌ エラー: ' + err.message;
+    toast('保存に失敗しました');
+  } finally {
+    btn.classList.remove('loading'); btn.textContent = '保存';
+  }
+}
+
+// ── STORAGE ──────────────────────────────────
+function saveToStorage() {
+  if (!state.videoName) return;
+  localStorage.setItem('karate_marks_' + state.videoName, JSON.stringify(state.marks));
+}
+
+function showRecentFiles() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('karate_marks_')) keys.push(k);
+  }
+  if (!keys.length) return;
+  const wrap = document.getElementById('recent-files');
+  wrap.style.display = 'block';
+  document.getElementById('recent-list').innerHTML = keys.map(k => {
+    const name = k.replace('karate_marks_','');
+    const data = JSON.parse(localStorage.getItem(k)||'[]');
+    return `<div class="recent-item"><span>${escHtml(name)}</span><span style="color:var(--accent)">${data.length}件</span></div>`;
+  }).join('');
+}
+
+// ── UTILS ────────────────────────────────────
+function formatTime(t) {
+  const mm = Math.floor(t/60), ss = (t%60).toFixed(3).padStart(6,'0');
+  return mm+':'+ss;
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function updateLabelCount() {
+  document.getElementById('label-count').innerHTML = 'マーク: <em>'+state.marks.length+'</em>';
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ── KEYBOARD ─────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+  const p = document.querySelector('.panel.active')?.id;
+  if (p === 'panel-first') {
+    if (e.code === 'Space')      { e.preventDefault(); togglePlay(); }
+    if (e.code === 'ArrowRight') { e.preventDefault(); videoSkip(1); }
+    if (e.code === 'ArrowLeft')  { e.preventDefault(); videoSkip(-1); }
+    if (e.code === 'KeyM')       { e.preventDefault(); markHesitation(); }
+  }
+  if (p === 'panel-second') {
+    if (e.code === 'Space')      { e.preventDefault(); togglePlay2(); }
+    if (e.code === 'ArrowRight') { e.preventDefault(); video2Skip(1); }
+    if (e.code === 'ArrowLeft')  { e.preventDefault(); video2Skip(-1); }
+    if (e.code === 'KeyY')       { e.preventDefault(); setJudge('yes'); }
+    if (e.code === 'KeyN')       { e.preventDefault(); setJudge('no'); }
+    if (e.code === 'Enter')      { e.preventDefault(); spNext(); }
+    if (e.code === 'KeyP')       { e.preventDefault(); spPrev(); }
+  }
+});
+</script>
+</body>
+</html>
